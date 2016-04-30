@@ -102,16 +102,43 @@ class CreateDummy(BaseEstimator, TransformerMixin):
 create_dummy = CreateDummy()
 create_dummy.fit(data.Pclass)
 create_dummy.transform(data.Pclass)
+# create_dummy.transform(pd.Series([0,1,2,3,4],index = [0,1,2,3,4]))
+#we can transform Pclass into binary variables now
+
+
 ######Sex
+class TransformSex(BaseEstimator, TransformerMixin):
+	def __init__(self):
+		pass
+	def fit(self, X, y=None, **fit_paras):
+		return self
+	def transform(self, X, y=None, **transform_paras):
+		###the following will change the original dataframe as well
+		X.loc[:,'Sex'] = X.Sex.replace({'male':1, 'female':0})
+		return X
 
 ######Age
-
+##age is important? build a model to predict age?
 
 
 ######name
+class ExtractName(BaseEstimator, TransformerMixin):
+	def __init__(self):
+		pass
+	def fit(self, X, y=None, **fit_paras):
+		return self
+	def transform(self, X, y=None, **transform_paras):
+		return X.Name.apply(lambda row: self.parse(row))
 
+	def parse(self, cell):
+		m = re.search(', [A-Za-z\W]+?\.', cell) #this way we got all the parsing right, but may get some results that are rare
+		# m = re.search(', [A-Za-z]+\.', cell) #this way is more conservative, but would make the rare ones into '' and make them easier to handle
+		if m: return m.group(0)[2:]
+		else: return ''
 
-
+sk = ExtractName()
+hl= sk.transform(data)
+print hl.value_counts()
 ######ticket
 
 
@@ -122,7 +149,6 @@ create_dummy.transform(data.Pclass)
 #######Embark
 
 
-#####for some ML, we need to transfer to dummy variables
 
 
 
