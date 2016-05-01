@@ -83,7 +83,7 @@ class CreateDummy(BaseEstimator, TransformerMixin):
 		self.binary_labels = list(X.unique())
 		self.root_name = X.name
 		self.var_names = [self.root_name+'_'+ str(binary_label) for binary_label in self.binary_labels]
-
+		return self
 	def transform(self, X, y = None):
 		# print self.var_names
 		res = pd.DataFrame(columns = self.var_names, index = X.index)
@@ -118,9 +118,6 @@ class TransformSex(BaseEstimator, TransformerMixin):
 		###the following will change the original dataframe as well
 		X.loc[:,'Sex'] = X.Sex.replace({'male':1, 'female':0})
 		return X
-
-######Age
-##age is important? build a model to predict age?
 
 
 ######name
@@ -171,16 +168,57 @@ class ExtractName(BaseEstimator, TransformerMixin):
 		if m: return m.group(0)[2:]
 		else: return ''
 
-sk = ExtractName()
-hl= sk.transform(data)
+
 ######ticket
+class ProcessTicket(BaseEstimator, TransformerMixin):
+	'''
+	this function transfer the ticket number to length(need further categorize to dummy V)
+	'''
+	def __init__(self):
+		pass
+	def fit(self, X, y=None, **fit_paras):
+		return self
+	def transform(self, X, y=None, **transform_paras):
+		tickets = X.Ticket.apply(lambda row: self.extract_letter(row))
+		X.loc[:,'Ticket_len'] = tickets.apply(lambda x: len(x))
+		X.drop('Ticket', axis=1, inplace=True)
+		return X
+	def extract_letter(self, row):
+		# m = re.search('^[A-Za-z]+.* ', row)
+		m = re.search('[0-9]+$', row)
+		if m: return m.group(0)
+		else: return ''
 
-
-
-
-#######Fare
+#######Fare: no need to feature engineering at this point
 #######Cabin
-#######Embark
+class ProcessCabin(BaseEstimator, TransformerMixin):
+	def __init__(self):
+		pass
+	def fit(self, X, y=None, **fit_paras):
+		return self
+	def transform(self, X, y = None):
+		cabins = X.Cabin.apply(lambda row: row if type(row) is str else '')
+		X.loc[:, 'Cabin'] = cabins.apply(lambda row: self.parse_cabin(row))
+		return X
+	def parse_cabin(self, row):
+		m = re.search('^[A-Za-z]+?', row)
+		if m: return m.group(0)
+		else: return 'unknown'
+
+#######Embarked
+class ProcessEmbarked(BaseEstimator, TransformerMixin):
+	def __init__(self):
+		self.mode = None
+	def fit(self, X, y= None, **fit_paras):
+		self.mode = X.Embarked.mode().values[0]
+		return self
+	def transform(self, X, y= None, **transform_paras):
+		X.Embarked.fillna(self.mode, inplace = True)
+		return X
+
+
+######Age
+##age is important? build a model to predict age?
 
 
 # print 'Training...'
