@@ -92,6 +92,8 @@ class CreateDummy(BaseEstimator, TransformerMixin):
 		res.loc[:, 'VarName'] = X.apply(lambda x: self.root_name+'_'+str(x))
 		# print res	
 		def match_binary_var_be_0(row):
+			###make any variable showing in raw.index as 1; if there is any unseen variable,
+			###any of these variables would be shown as all 0s in the dummy Variables
 			if row.VarName in row.index:
 				row.loc[row.VarName] = 1
 			return row
@@ -127,8 +129,41 @@ class ExtractName(BaseEstimator, TransformerMixin):
 		pass
 	def fit(self, X, y=None, **fit_paras):
 		return self
+
 	def transform(self, X, y=None, **transform_paras):
-		return X.Name.apply(lambda row: self.parse(row))
+		titles_0 = X.Name.apply(lambda row: self.parse(row))
+		X.loc[:,'Name'] = titles_0.apply(lambda cell: self.transfer_title(cell))
+		return X
+
+	def transfer_title(self, raw):
+		'''
+		replace all the small/rare title to usual ones;
+		Mr. Mrs. Miss. Master. should be kept, others should be transfered to these four;
+		Master is replaced by Mister(Mr.) in 19th century, titanic happned in 1912, so master. meaning boys and young men;
+		Major. -> Mr.
+		Mlle. -> Miss.
+		Ms    -> Mrs.
+		Mme. Madame-> Mrs.
+		Rev.-> Mr.
+		Dr. -> Mr.
+		'''
+		if raw == 'Dr.': return 'Mr.'
+		elif raw == 'Mr.' or raw == 'Master.' or raw == 'Mrs.' or raw == 'Miss.': return raw
+		elif raw == 'Rev.': return 'Mr.'
+		elif raw == 'Mlle.': return 'Miss.'
+		elif raw == 'Major.': return 'Mr.'
+		elif raw == 'Col.': return 'Mr.'
+		elif raw == 'Capt.': return 'Mr.'
+		elif raw == 'Sir.': return 'Mr.'
+		elif raw == 'Jonkheer.': return 'Master.'
+		elif raw == 'Jonkvrouw.': return 'Miss.'
+		elif raw == 'Don.': return 'Mr.'
+		elif raw == 'the Countess.': return 'Mrs.'
+		elif raw == 'the Count.': return 'Mr.'
+		elif raw == 'Ms.': return 'Mrs.'
+		elif raw == 'Mme.' or raw == 'Madame.': return 'Mrs.'
+		elif raw == 'Lady.': return 'Mrs.'
+		else: return 'Unknown'
 
 	def parse(self, cell):
 		m = re.search(', [A-Za-z\W]+?\.', cell) #this way we got all the parsing right, but may get some results that are rare
@@ -138,7 +173,6 @@ class ExtractName(BaseEstimator, TransformerMixin):
 
 sk = ExtractName()
 hl= sk.transform(data)
-print hl.value_counts()
 ######ticket
 
 
@@ -149,7 +183,9 @@ print hl.value_counts()
 #######Embark
 
 
-
+# print 'Training...'
+# print 'Predicting...'
+# print 'Done.'
 
 
 

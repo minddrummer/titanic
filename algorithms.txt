@@ -8,4 +8,4 @@ Random forests are generally the ¡°best¡± out there, but I tried gradient boosti
 and then try to ensembling them together!!
 so the final algorithm that i will use is a ensembling with rf, svm and boosting!!
 
-
+age is an important variale, instead of using median, try to impute it with other variables
