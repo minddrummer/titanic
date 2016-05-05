@@ -101,11 +101,6 @@ class CreateDummy(BaseEstimator, TransformerMixin):
 		res.drop('VarName', axis=1, inplace=True)
 		return res
 
-create_dummy = CreateDummy()
-create_dummy.fit(data.Pclass)
-create_dummy.transform(data.Pclass)
-# create_dummy.transform(pd.Series([0,1,2,3,4],index = [0,1,2,3,4]))
-#we can transform Pclass into binary variables now
 
 
 ######Sex
@@ -216,9 +211,37 @@ class ProcessEmbarked(BaseEstimator, TransformerMixin):
 		X.Embarked.fillna(self.mode, inplace = True)
 		return X
 
-
 ######Age
-##age is important? build a model to predict age?
+##age is important: filling in the missing values(by GLM, or decision tree regression, or other methods)
+class FillingAge(BaseEstimator, TransformerMixin):
+	def __init__(self):
+		pass
+	def fit(self, X, y=None, **fit_paras):
+		return self
+	def transform(self, X, y=None, **transform_paras):
+		pass
+
+
+class CombineDummyVars(BaseEstimator, TransformerMixin):
+
+	pass
+
+#first pipleline
+pip1=make_pipeline(NominalSibSp(), NominalParch(), TransformSex(), ExtractName(),ProcessTicket(), ProcessEmbarked(), ProcessCabin())
+
+print 'first print, data df shape is (%d, %d)' %(data.shape[0], data.shape[1])
+data=pip1.fit_transform(data)
+print 'second print, data df shape is (%d, %d)' %(data.shape[0], data.shape[1])
+
+
+create_dummy = CreateDummy()
+###create dummy for Pclass
+create_dummy.fit(data.Pclass)
+data = pd.concat([data, create_dummy.transform(data.Pclass)], axis=1)
+
+###create dummy for Name
+create_dummy.fit(data.Name)
+data = pd.concat([data, create_dummy.transform(data.Name)], axis=1)
 
 
 # print 'Training...'

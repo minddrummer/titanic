@@ -531,10 +531,12 @@ class SelectCategoryVars(BaseEstimator, TransformerMixin):
 		return np.array(X.loc[:,res])
 
 combine_feature = FeatureUnion([("scalingfloat", ScalingFloat()), ("selectcategory", SelectCategoryVars())])
+# combine_feature = FeatureUnion([("scalingfloat", ScalingFloat())])
+# combine_feature = FeatureUnion([("selectcategory", SelectCategoryVars())])
 combine_feature.fit(train)
 train = combine_feature.transform(train)
 test = combine_feature.transform(test)
-
+# print train.shape
 
 lrc = GridSearchCV(LogisticRegression(), param_grid = dict(C = C, \
 	penalty=penalty, intercept_scaling=intercept_scaling), cv = 10)
