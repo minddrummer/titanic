@@ -23,8 +23,6 @@ pylab.ion()
 pd.set_option('display.max_rows', 2000)
 pd.set_option('display.max_columns', 200)
 
-
-data = pd.read_csv('train.csv')
 # PassengerId      int64
 # Survived         int64
 # Pclass           int64
@@ -50,7 +48,8 @@ class NominalSibSp(BaseEstimator, TransformerMixin):
 	def fit(self, X, y=None):
 		self.mean = X.loc[:,'SibSp'].mean()
 		return self
-	def transform(self, X, y=None):
+	def transform(self, X0, y=None):
+		X = X0.copy()
 		X.loc[:, 'SibSp_binary'] = (X.loc[:,'SibSp']>=self.mean).astype(int)
 		return X
 
@@ -64,7 +63,8 @@ class NominalParch(BaseEstimator, TransformerMixin):
 	def fit(self, X, y=None):
 		self.mean = X.loc[:,'Parch'].mean()
 		return self
-	def transform(self, X, y=None):
+	def transform(self, X0, y=None):
+		X = X0.copy()
 		X.loc[:, 'Parch_binary'] = (X.loc[:,'Parch']>=self.mean).astype(int)
 		return X
 
@@ -113,7 +113,8 @@ class TransformSex(BaseEstimator, TransformerMixin):
 		pass
 	def fit(self, X, y=None, **fit_paras):
 		return self
-	def transform(self, X, y=None, **transform_paras):
+	def transform(self, X0, y=None, **transform_paras):
+		X = X0.copy()
 		###the following will change the original dataframe as well
 		X.loc[:,'Sex'] = X.Sex.replace({'male':1, 'female':0})
 		return X
@@ -126,7 +127,8 @@ class ExtractName(BaseEstimator, TransformerMixin):
 	def fit(self, X, y=None, **fit_paras):
 		return self
 
-	def transform(self, X, y=None, **transform_paras):
+	def transform(self, X0, y=None, **transform_paras):
+		X = X0.copy()
 		titles_0 = X.Name.apply(lambda row: self.parse(row))
 		X.loc[:,'Name'] = titles_0.apply(lambda cell: self.transfer_title(cell))
 		# X.loc[:,'Name'] = titles_0
@@ -178,16 +180,67 @@ class ProcessTicket(BaseEstimator, TransformerMixin):
 		pass
 	def fit(self, X, y=None, **fit_paras):
 		return self
-	def transform(self, X, y=None, **transform_paras):
+	def transform(self, X0, y=None, **transform_paras):
+		X = X0.copy()
 		tickets = X.Ticket.apply(lambda row: self.extract_letter(row))
 		X.loc[:,'Ticket_len'] = tickets.apply(lambda x: len(x))
-		X.drop('Ticket', axis=1, inplace=True)
+		# X.loc[:,'Ticket_start'] = tickets.apply(lambda x: x[0] if len(x)>0 else '0')
+		# X.drop('Ticket', axis=1, inplace=True)
 		return X
 	def extract_letter(self, row):
 		# m = re.search('^[A-Za-z]+.* ', row)
 		m = re.search('[0-9]+$', row)
 		if m: return m.group(0)
 		else: return ''
+
+
+class ProcessTicket2(BaseEstimator, TransformerMixin):
+	'''
+	this function transfer the ticket number to length(need further categorize to dummy V)
+	'''
+	def __init__(self, drop):
+		self.drop = drop
+	def fit(self, X, y=None, **fit_paras):
+		return self
+	def transform(self, X0, y=None, **transform_paras):
+		X = X0.copy()
+		if self.drop:
+			X.drop('Ticket', axis=1, inplace = True)
+			return X
+		else:
+			tickets = X.Ticket.apply(lambda row: row.split(' ')).apply(lambda x: x[0] if len(x)>1 else 'unknown').apply(self.match_string)
+			# print tickets
+			X.loc[:,'Ticket'] = tickets
+			return X
+	def match_string(self, row):
+		if row in ['A/5','A/5.', 'A./5.', 'A.5.']: 
+			return 'A5'
+		elif row in ['PC']:
+			return 'PC'
+		elif row in ['SW/PP', 'S.W./PP', 'PP', 'P/PP', 'S.O./P.P.', 'S.O.P.']:
+			return 'PP'
+		elif row in ['C.A.', 'CA', 'CA.',  'C.A./SOTON']:
+			return 'CA'
+		elif row in ['SC/Paris',  'SC/PARIS', 'SC', 'SC/AH', 'S.C./PARIS']:
+			return 'SC'
+		elif row in ['S.C./A.4.','A/4.',  'A4.', 'A/4']:
+			return 'A4'
+		elif row in ['S.P.']:
+			return 'SP'
+		elif row in ['S.O.C.', 'SO/C']:
+			return 'SOC'
+		elif row in ['W./C.', 'W/C']:
+			return 'WC'
+		elif row in ['SOTON/OQ' , 'STON/O', 'SOTON/O.Q.', 'STON/O2.' , 'SOTON/O2']:
+			return 'SOTON'
+		elif row in  ['W.E.P.',  'WE/P']:
+			return 'WEP'
+		elif row in ['C', 'F.C.C.',  'F.C.']:
+			return 'FC'
+		else:
+			return 'unknown'
+
+
 
 #######Fare: no need to feature engineering at this point
 #######Cabin
@@ -196,7 +249,8 @@ class ProcessCabin(BaseEstimator, TransformerMixin):
 		pass
 	def fit(self, X, y=None, **fit_paras):
 		return self
-	def transform(self, X, y = None):
+	def transform(self, X0, y = None):
+		X = X0.copy()
 		cabins = X.Cabin.apply(lambda row: row if type(row) is str else '')
 		X.loc[:, 'Cabin'] = cabins.apply(lambda row: self.parse_cabin(row))
 		return X
@@ -205,6 +259,16 @@ class ProcessCabin(BaseEstimator, TransformerMixin):
 		if m: return m.group(0)
 		else: return 'unknown'
 
+class ProcessCabin2(BaseEstimator, TransformerMixin):
+	def __init__(self):
+		pass
+	def fit(self, X, y=None, **fit_paras):
+		return self
+	def transform(self, X0, y = None):
+		X = X0.copy()
+		X.loc[:, 'Cabin'] = X.Cabin.apply(lambda row: row if type(row) is str else 'unknown')	
+		return X
+	
 #######Embarked
 class ProcessEmbarked(BaseEstimator, TransformerMixin):
 	def __init__(self):
@@ -212,19 +276,13 @@ class ProcessEmbarked(BaseEstimator, TransformerMixin):
 	def fit(self, X, y= None, **fit_paras):
 		self.mode = X.Embarked.mode().values[0]
 		return self
-	def transform(self, X, y= None, **transform_paras):
+	def transform(self, X0, y= None, **transform_paras):
+		X = X0.copy()
 		X.Embarked.fillna(self.mode, inplace = True)
 		return X
 
 ######Age
 ##age is important: filling in the missing values(by GLM, or decision tree regression, or other methods)
-class FillingAge(BaseEstimator, TransformerMixin):
-	def __init__(self):
-		pass
-	def fit(self, X, y=None, **fit_paras):
-		return self
-	def transform(self, X, y=None, **transform_paras):
-		pass
 
 
 class CombineDummyVars(BaseEstimator, TransformerMixin):
@@ -242,7 +300,8 @@ class CombineDummyVars(BaseEstimator, TransformerMixin):
 			self.create_dummy_dict[each] = create_dummy
 		return self
 
-	def transform(self, X, y = None, **transform_paras):
+	def transform(self, X0, y = None, **transform_paras):
+		X = X0.copy()
 		for each in self.var_lst:
 			X = pd.concat([X, self.create_dummy_dict[each].transform(X.loc[:, each])], axis=1)
 		X.drop(self.var_lst, axis=1, inplace=True)
@@ -265,33 +324,11 @@ class LinearRegForAge(BaseEstimator, TransformerMixin):
 		use X0's all not np.NaN data as the training data
 		'''
 		X_train = X0[~X0.Age.apply(np.isnan)].copy()
-		# np.random.seed(199)
-		# select = pd.Series(np.random.random_sample(X_train.shape[0])<=0.7, index = X_train.index).apply(lambda x: True if x==1 else False)
-		# print select
-		# X_test = X_train[select.apply(lambda x: not x)]
-		# X_train = X_train[select]		
-		# print X_test.shape
 		age_train = X_train.Age
-		# age_test = X_test.Age
 		X_train = X_train.drop('Age',axis=1)
-		# X_test = X_test.drop('Age',axis=1)
-		# X_train.loc[:,'Fare']=  X_train.Fare.apply(lambda x: np.log(x) if x != 0 else np.log(x+0.001))
-		# X_train.loc[:,'Fare'] = (X_train.loc[:,'Fare'] - X_train.loc[:,'Fare'].mean())/X_train.loc[:,'Fare'].std()
-		self.linearReg.fit(X_train, age_train)	
-		
-		print 'R^2 is', self.linearReg.score(X_train, age_train)	
-		# print 'R^2 is for test', self.linearReg.score(X_test, age_test)	
-		print 'ib predict error is:', (self.linearReg.predict(X_train) - age_train).apply(abs).mean()
-		# print 'oob predict error is:', (self.linearReg.predict(X_test) - age_test).apply(abs).mean()
-		# print X_train.loc[:,'Fare'].mean()
-
-		# print X_train.head(20)
-		# self.linearReg = smf.ols(formula = 'Age~1+Name_Mr+Name_Mrs+Name_Miss+Name_Master+Fare+Sex+Pclass_1+Pclass_2+Pclass_3+Pclass_1:Fare+Pclass_2:Fare+Pclass_3:Fare', data = X_train)
-		# self.linearReg = smf.ols(formula = 'Age~Name+Fare^2+Sex+Pclass+Pclass:Fare-1', data = X_train)
-
-		# results = self.linearReg.fit()
-		# print results.summary()
-		# print 'the linear Regression R^2 is:', self.linearReg.score(X_train, age_train)
+		self.linearReg.fit(X_train, age_train)			
+		# print 'R^2 is', self.linearReg.score(X_train, age_train)	
+		# print 'ib predict error is:', (self.linearReg.predict(X_train) - age_train).apply(abs).mean()
 		return self
 
 	def transform(self, X, y = None, **transform_paras):
@@ -307,83 +344,124 @@ class LinearRegForAge(BaseEstimator, TransformerMixin):
 		X_test.loc[:,'Age'] = self.linearReg.predict(X_test)
 		return pd.concat([X_train, X_test], axis=0).sort()
 
+class ProcessFare(BaseEstimator, TransformerMixin):
+	'''
+	Fare is not normally distributed, so we transform it to normal shape
+	'''
+	def __init__(self):
+		self.mean = None
+		self.std = None
+	def fit(self, X, y=None, **fit_paras):
+		self.mean = (X.Fare+1).apply(np.log).mean()
+		self.std = (X.Fare+1).apply(np.log).std()
+		return self
+	def transform(self, X0, y=None, **transform_paras):
+		X = X0.copy()
+		X.loc[:,'Fare'] = ((X.Fare+1).apply(np.log)-self.mean)/self.std
+		return X
 
 
+#############data first segment and drop some variables
 data = pd.read_csv('train.csv')
 test = pd.read_csv('test.csv')
 
+np.random.seed(119)
+select = pd.Series(np.random.random_sample(data.shape[0]), index = data.index)<=0.8
+train = data[select].copy()
+valid = data[select.apply(lambda x: not x)].copy()
+
 ###miscellaneous
-y = data.Survived
-data.drop('Survived', inplace = True, axis=1)
-test.loc[:,'Fare'].fillna(value = data.loc[:,'Fare'].mean(), inplace=True)
+y_train = train.Survived
+y_valid = valid.Survived
+train.drop('Survived', inplace = True, axis=1)
+valid.drop('Survived', inplace = True, axis=1)
+test.loc[:,'Fare'].fillna(value = train.loc[:,'Fare'].mean(), inplace=True)
 test_passengerId = test.PassengerId
+train.drop(['PassengerId'], axis=1, inplace=True)
+valid.drop(['PassengerId'], axis=1, inplace=True)
 test.drop(['PassengerId'], axis=1, inplace=True)
-data.drop(['PassengerId'], axis=1, inplace=True)
+##combine train and valid for combined fitting after gridsearchCV
+df = pd.concat([train, valid], axis=0).copy()
+
+# ###pipeline transformation for random forest
+# categorical_vars = ['Pclass','Name','Cabin','Embarked','Ticket_start', 'Ticket']
+categorical_vars = ['Pclass','Name','Cabin','Embarked', 'Ticket']
+
+####
+# pip_rf=make_pipeline(ProcessFare(), NominalSibSp(), NominalParch(), TransformSex(), ExtractName(),ProcessTicket(), ProcessTicket2(),\
+# 	ProcessEmbarked(), ProcessCabin(), CombineDummyVars(categorical_vars), LinearRegForAge())
+
+pip_rf=make_pipeline(ProcessFare(), NominalSibSp(), NominalParch(), TransformSex(), ExtractName(), ProcessTicket(), ProcessTicket2(False),\
+	ProcessEmbarked(), ProcessCabin(), CombineDummyVars(categorical_vars), LinearRegForAge())
+
+####pipline test
 
 
-# ###pipeline transformation---test lots of pipeline combinations
-categorical_vars = ['Pclass','Name','Cabin','Embarked']
-
-# # pip1=make_pipeline(NominalSibSp(), NominalParch(), TransformSex(), ExtractName(),ProcessTicket(), \
-# # 	ProcessEmbarked(), ProcessCabin(), CombineDummyVars(categorical_vars), LinearRegForAge())
-
-pip1=make_pipeline(NominalSibSp(), NominalParch(), TransformSex(), ExtractName(),ProcessTicket(), \
-	ProcessEmbarked(), ProcessCabin(), CombineDummyVars(categorical_vars))
-
-
-
-print 'first print, data df shape is (%d, %d)' %(data.shape[0], data.shape[1])
-data = pip1.fit_transform(data)
-print 'second print, data df shape is (%d, %d)' %(data.shape[0], data.shape[1])
-test = pip1.transform(test)
-
-
-linear_reg_for_age = LinearRegForAge()
-linear_reg_for_age.fit(data)
-
-
+print 'first print, data df shape is (%d, %d)' %(train.shape[0], train.shape[1])
+train = pip_rf.fit_transform(train)
+print 'second print, data df shape is (%d, %d)' %(train.shape[0], train.shape[1])
+valid = pip_rf.transform(valid)
 
 
 
-
-
-# ###random forest classifier
+# # # ###random forest classifier
 # rfc = RandomForestClassifier(oob_score=True, max_depth=None)
-# #parameter grids
-# n_estimators = [100, 125, 150, 175]
-# max_features = [3,6,10,15,20,25]
-# min_samples_split = [2,5,7,9]
+# # #parameter grids: 
+# n_estimators = [50, 100, 160, 200]
+# max_features = [3, 6, 9, 15]
+# # max_features = [20,25,30,40]
+# min_samples_split = [2, 8, 9, 11]
+
+
+# #parameter grids: 
+# # n_estimators = [125]
+# # max_features = [20,25,30]
+# # # max_features = [10,20,25,40,60]
+# # min_samples_split = [9]
+
+
 # rf_paras = {'n_estimators': n_estimators, 'max_features':max_features,'min_samples_split':min_samples_split}
 
-# rfc_grid_search = GridSearchCV(rfc, param_grid = rf_paras, cv = 10, refit=True)
-# rfc_grid_search.fit(data, y)
+# rfc_grid_search = GridSearchCV(rfc, param_grid = rf_paras, cv = 7, refit=True)
+# rfc_grid_search.fit(train, y_train)
 
-# y_predict = rfc_grid_search.predict(data)
-# y_test = rfc_grid_search.predict(test)
+# y_predict = rfc_grid_search.predict(train)
+# y_valid_predict = rfc_grid_search.predict(valid)
+# # y_test = rfc_grid_search.predict(test)
 
-# ###checking results
+# # ###checking results
 # print 'the combinations scores of each parameter setting:', sorted(rfc_grid_search.grid_scores_, key=lambda x: x[1])
 # print 'the best parameter setting is:', rfc_grid_search.best_estimator_
 # print 'the best CV score of the GridSearchCV is:', rfc_grid_search.best_score_
 # #best CV score is:
 # print 'the best oob score of the best estimator of grid search results are:', rfc_grid_search.best_estimator_.oob_score_
-# print 'the in-bag prediction accuracy rate is:', (y == y_predict).sum()/float(y.shape[0])
-# print 'the feature importances are:', sorted(list(zip(data.columns, rfc_grid_search.best_estimator_.feature_importances_)), key = lambda x: x[1], reverse=True)
+# print 'the in-bag prediction accuracy rate is:', (y_train == y_predict).sum()/float(y_train.shape[0])
+# print 'the validation prediction accuracy rate is:', (y_valid == y_valid_predict).sum()/float(y_valid.shape[0])
+# # print 'the feature importances are:', sorted(list(zip(train.columns, rfc_grid_search.best_estimator_.feature_importances_)), key = lambda x: x[1], reverse=True)
 
 
-# # ####self setting of rfc
-# # rfc_self = RandomForestClassifier(oob_score=True, max_depth=None,max_features=6, min_samples_split=9, n_estimators=100)
-# # rfc_self.fit(data,y)
-# # print rfc_self.oob_score_
-# # y_predict = rfc_self.predict(data)
-# # print 'the in-bag prediction accuracy rate is:', (y == y_predict).sum()/float(y.shape[0])
-# # y_test = rfc_self.predict(test)
+# #####combine train and valid to get the final model and predict again
+rfc_self = RandomForestClassifier(oob_score=True, max_depth=None,max_features=9, min_samples_split=11, n_estimators=160)
+# final_df = pd.concat([train, valid], axis = 0)
+final_df = pip_rf.fit_transform(df)
+final_y = pd.concat([y_train, y_valid], axis=0).reset_index().set_index('index').sort().loc[:,'Survived']
+rfc_self.fit(final_df,final_y)
+print rfc_self.oob_score_
+y_predict = rfc_self.predict(final_df)
+print 'the in-bag prediction accuracy rate is:', (final_y == y_predict).sum()/float(final_y.shape[0])
+test = pip_rf.transform(test)
+y_test = rfc_self.predict(test)
 
-# ###output the data from y_test
-# output = pd.concat([test_passengerId, pd.Series(y_test)], axis=1)
-# output.columns = ['PassengerId','Survived']
-# output.to_csv('y_test.csv', index=False)
 
-# #random forest model or similar for age prediction
-# #other techniques from forum
-# #ensembling
+# # ###output the data from y_test
+output = pd.concat([test_passengerId, pd.Series(y_test)], axis=1)
+output.columns = ['PassengerId','Survived']
+output.to_csv('y_test.csv', index=False)
+
+
+
+##################SVM model
+
+
+
+##################Ada-boosting model
