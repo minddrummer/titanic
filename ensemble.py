@@ -27,6 +27,7 @@ from sklearn.preprocessing import StandardScaler as Scaler
 from sklearn.svm import SVC
 from sklearn.ensemble import AdaBoostClassifier
 from sklearn.feature_selection import SelectKBest
+from sklearn.neighbors import KNeighborsClassifier
 pylab.ion()
 pd.set_option('display.max_rows', 2000)
 pd.set_option('display.max_columns', 200)
@@ -366,7 +367,7 @@ class ProcessFare(BaseEstimator, TransformerMixin):
 data = pd.read_csv('train.csv')
 test = pd.read_csv('test.csv')
 
-np.random.seed(119)
+np.random.seed(007)
 select = pd.Series(np.random.random_sample(data.shape[0]), index = data.index)<=0.8
 train = data[select].copy()
 valid = data[select.apply(lambda x: not x)].copy()
@@ -383,8 +384,8 @@ test.loc[:,'Fare'].fillna(value = train.loc[:,'Fare'].mean(), inplace=True)
 # test_passengerId = test.PassengerId
 ##combine train and valid for combined fitting after gridsearchCV
 df = pd.concat([train, valid], axis=0).copy()
-ensemble = pd.DataFrame(columns=['rf_man','rf_select','svm','logistic','adaboost'], index= test.index)
-
+ensemble = pd.DataFrame(columns=['rf_man','rf_select','svm','knn','adaboost'], index= test.index)
+true_y = pd.read_csv('y_true.csv')
 
 ######################################random forest######################################
 cross_validation_rf = False
@@ -417,9 +418,9 @@ if cross_validation_rf:
 	# #parameter grids: 
 	n_estimators = [25, 50, 75]
 	max_features = [5, 6, 10]
-	max_depth = [5, 6, 7, 10, 15]
+	max_depth = [5, 6, 7, 10]
 	# max_features = [20,25,30,40]
-	min_samples_split = [2, 10, 15, 25]
+	min_samples_split = [2, 10, 25]
 	# min_samples_split = [2]
 
 	# n_estimators = [100]
@@ -428,6 +429,11 @@ if cross_validation_rf:
 	# # max_features = [20,25,30,40]
 	# min_samples_split = [2]
 
+	#@@@@@@@@@@@@@@@@
+	select_k = SelectKBest(k = 25)
+	train = select_k.fit_transform(train, y_train)
+	valid = select_k.transform(valid)
+	#@@@@@@@@@@@@@@@@
 
 	rf_paras = {'n_estimators': n_estimators, 'max_features':max_features,\
 	'min_samples_split':min_samples_split, 'max_depth': max_depth}
@@ -475,7 +481,7 @@ else:
 	test_rf = select_k.transform(test_rf)
 	#######################################
 	y_test = rfc_self.predict(test_rf)
-
+	print '---the true oob accuracy is:', (true_y.Survived==y_test).sum()/float(true_y.Survived.shape[0])
 
 	# # ###output the data from y_test
 	output_rf = pd.Series(y_test, index = test.index).reset_index()
@@ -484,7 +490,8 @@ else:
 	###save the data to ensemble df
 	ensemble.loc[:,'rf_man'] = output_rf.Survived.values
 
-
+	
+	#############################Random forest selected model#####################################################
 	###the below is selected the best model from the true cross validation result, with different depth parameter value
 	rfc_self = RandomForestClassifier(n_estimators = 50,
                                 max_depth = 10, 
@@ -494,13 +501,20 @@ else:
 
 	final_df = pip_rf.fit_transform(df)
 	final_y = pd.concat([y_train, y_valid], axis=0).reset_index().set_index('PassengerId').sort().loc[:,'Survived']
+	#######################################
+	select_k = SelectKBest(k = 25)
+	final_df = select_k.fit_transform(final_df, final_y)
+	#######################################
 	rfc_self.fit(final_df,final_y)
 	print 'the final random forest OOB score is:', rfc_self.oob_score_
 	y_predict = rfc_self.predict(final_df)
 	print 'the in-bag prediction accuracy rate of random forest is:', (final_y == y_predict).sum()/float(final_y.shape[0])
 	test_rf = pip_rf.transform(test)
+	#######################################
+	test_rf = select_k.transform(test_rf)
+	#######################################
 	y_test = rfc_self.predict(test_rf)
-
+	print '---the true oob accuracy is:', (true_y.Survived==y_test).sum()/float(true_y.Survived.shape[0])
 
 	# # ###output the data from y_test
 	output_rf = pd.Series(y_test, index = test.index).reset_index()
@@ -508,7 +522,7 @@ else:
 	output_rf.to_csv('y_test.csv', index=False)
 	###save the data to ensemble df
 	ensemble.loc[:,'rf_select'] = output_rf.Survived.values
-
+	
 
 
 
@@ -551,13 +565,14 @@ if cross_validation_svm:
 	#linear SVM 
 	# SVM_C = list(np.arange(0.03, 0.16, 0.01))
 	# SVM_gamma = [0.3]
-	SVM_kernel = ['sigmoid', 'rbf','linear']
-	#SVM_kernel = ['linear']
+	# SVM_kernel = ['sigmoid', 'rbf','linear']	
 	#kernel SVM
-	SVM_C = [0.001, 0.003, 0.1, 0.3, 0.6, 1.0, 3.0, 10, 20]
-	SVM_gamma = [0.001, 0.003, 0.1, 0.3, 0.6, 1.0, 3.0, 10, 20]
-	# SVM_kernel = ['sigmoid']
-
+	# SVM_C = [0.001, 0.003, 0.1, 0.3, 0.6, 1.0, 3.0, 10, 20]
+	# SVM_gamma = [0.001, 0.003, 0.1, 0.3, 0.6, 1.0, 3.0, 10, 20]
+	
+	SVM_kernel = ['linear']
+	SVM_C = [0.003, 0.005, 0.007, 0.1, 0.15]
+	SVM_gamma = [0.3] 
 
 	SVM_paras = {'C': SVM_C, 'gamma':SVM_gamma,'kernel':SVM_kernel}
 	SVM_grid_search = GridSearchCV(svm, param_grid = SVM_paras, cv = 8, refit=True)
@@ -580,15 +595,24 @@ if cross_validation_svm:
 
 else:
 	# #####combine train and valid to get the final model and predict again
-	svm_self = SVC(C=0.1, kernel ='linear', gamma= 1.0)
-	# svm_self = SVC(C=20 , kernel ='sigmoid', gamma= 0.003)
+	svm_self = SVC(C=0.005, kernel ='linear', gamma= 1.0)
+	# svm_self = SVC(C=20, kernel ='rbf', gamma= 0.003)
 	# final_df = pd.concat([train, valid], axis = 0)
 	final_df = pip_svm.fit_transform(df)
 	final_y = pd.concat([y_train, y_valid], axis=0).reset_index().set_index('PassengerId').sort().loc[:,'Survived']
+	#######################################
+	# for SVM, it seems that select the best or not should not matter; or if matter, should more likely to
+	# impaire the results
+	# select_k = SelectKBest(k = 25)
+	# final_df = select_k.fit_transform(final_df, final_y)
+	#######################################
 	svm_self.fit(final_df,final_y)
 	y_predict = svm_self.predict(final_df)
 	print 'the in-bag prediction accuracy rate of SVM is:', (final_y == y_predict).sum()/float(final_y.shape[0])
 	test_svm = pip_svm.transform(test)
+	#######################################
+	# test_svm = select_k.transform(test_svm)
+	#######################################
 	y_test = svm_self.predict(test_svm)
 
 
@@ -597,28 +621,163 @@ else:
 	output_svm.columns = ['PassengerId','Survived']
 	output_svm.to_csv('y_test.csv', index=False)
 	ensemble.loc[:,'svm'] = output_svm.Survived.values
+	print '---the true oob accuracy is:', (true_y.Survived==y_test).sum()/float(true_y.Survived.shape[0])
 
-##################Ada-boosting model
-lst = []
-for name in sk.name:
-	print '@@@@@@@@@'
-	print hl[hl.Name == name].index
-	print sk[sk.name==name].survived.values[0]
-	if len(hl[hl.Name == name].index) >0:
-		lst.append((hl[hl.Name == name].index[0], sk[sk.name==name].survived.values[0]))
 
-true_y = pd.DataFrame(columns =['Survived'], index = test.index)
-for pid in test.index:
-	print pid
-	if pid in mm.passid.values:
-		true_y.loc[pid] = mm[mm.passid == pid].survive.values[0]
+####################################Ada-boosting model####################################
+# cross_validation_boost = True
+cross_validation_boost = False
 
-for pid in true_y.index:
-	if np.isnan(float(true_y.loc[pid])):
-		print pid 
-		print output_svm[output_svm.PassengerId==pid].Survived.values[0]
-		true_y.loc[pid] =output_svm[output_svm.PassengerId==pid].Survived.values[0]
+categorical_vars = ['Pclass','Name','Cabin','Embarked']
 
-true_y.reset_index(inplace=True)
-true_y.columns = ['PassengerId','Survived']
-true_y.to_csv('y_true.csv', index=False)
+#####pipeline transformation for adaboost
+pip_boost=make_pipeline(ProcessFare(), NominalSibSp(), NominalParch(),CreateFam(), TransformSex(), \
+	ExtractNameTitle(), ProcessTicket(), ProcessTicket2(),\
+	ProcessEmbarked(), ProcessCabin(), CombineDummyVars(categorical_vars), LinearRegForAge())
+
+
+if cross_validation_boost:
+	print 'first print, data df shape is (%d, %d)' %(train.shape[0], train.shape[1])
+	train = pip_boost.fit_transform(train)
+	print 'second print, data df shape is (%d, %d)' %(train.shape[0], train.shape[1])
+	valid = pip_boost.transform(valid)
+
+	######best parameter setting so far
+
+	######best parameter setting so far
+	boost = AdaBoostClassifier()
+	# #parameter grids:
+	boost_n_estimators = [25, 30, 35, 40, 45]  
+	boost_learning_rate = [0.4, 0.45, 0.5, 0.55, 0.6]
+
+	boost_paras = {'n_estimators': boost_n_estimators, 'learning_rate':boost_learning_rate}
+	boost_grid_search = GridSearchCV(boost, param_grid = boost_paras, cv = 8, refit=True)
+	boost_grid_search.fit(train, y_train)
+
+	y_predict = boost_grid_search.predict(train)
+	y_valid_predict = boost_grid_search.predict(valid)
+
+	# ###checking results
+	print 'the combinations scores of each parameter setting:'
+	for item in sorted(boost_grid_search.grid_scores_, key=lambda x: x[1]): print item
+	print 'the best parameter setting is:', boost_grid_search.best_estimator_
+	print 'the best CV score of the GridSearchCV is:', boost_grid_search.best_score_
+	#best CV score is:
+	print 'the in-bag prediction accuracy rate is:', (y_train == y_predict).sum()/float(y_train.shape[0])
+	print 'the validation prediction accuracy rate is:', (y_valid == y_valid_predict).sum()/float(y_valid.shape[0])
+
+else:
+	# #####combine train and valid to get the final model and predict again
+	boost_self = AdaBoostClassifier(n_estimators = 50, learning_rate = 0.1) 
+	final_df = pip_boost.fit_transform(df)
+	final_y = pd.concat([y_train, y_valid], axis=0).reset_index().set_index('PassengerId').sort().loc[:,'Survived']
+	#######################################
+	select_k = SelectKBest(k = 25)
+	final_df = select_k.fit_transform(final_df, final_y)
+	#######################################
+	boost_self.fit(final_df,final_y)
+	y_predict = boost_self.predict(final_df)
+	print 'the in-bag prediction accuracy rate of adaBoost is:', (final_y == y_predict).sum()/float(final_y.shape[0])
+	test_boost = pip_boost.transform(test)
+	#######################################
+	test_boost = select_k.transform(test_boost)
+	#######################################
+	y_test = boost_self.predict(test_boost)
+
+
+	# # ###output the data from y_test
+	output_boost = pd.Series(y_test, index = test.index).reset_index()
+	output_boost.columns = ['PassengerId','Survived']
+	output_boost.to_csv('y_test.csv', index=False)
+	ensemble.loc[:,'adaboost'] = output_boost.Survived.values
+	print '---the true oob accuracy is:', (true_y.Survived==y_test).sum()/float(true_y.Survived.shape[0])
+
+
+
+####################################KNN model####################################
+# cross_validation_knn = True
+cross_validation_knn = False
+
+categorical_vars = ['Pclass','Name','Cabin','Embarked']
+
+#####pipeline transformation for adaknn
+pip_knn=make_pipeline(ProcessFare(), NominalSibSp(), NominalParch(),CreateFam(), TransformSex(), \
+	ExtractNameTitle(), ProcessTicket(), ProcessTicket2(),\
+	ProcessEmbarked(), ProcessCabin(), CombineDummyVars(categorical_vars), LinearRegForAge())
+
+
+if cross_validation_knn:
+	print 'first print, data df shape is (%d, %d)' %(train.shape[0], train.shape[1])
+	train = pip_knn.fit_transform(train)
+	print 'second print, data df shape is (%d, %d)' %(train.shape[0], train.shape[1])
+	valid = pip_knn.transform(valid)
+
+
+	#@@@@@@@@@@@@@@@@
+	select_k = SelectKBest(k = 25)
+	train = select_k.fit_transform(train, y_train)
+	valid = select_k.transform(valid)
+	#@@@@@@@@@@@@@@@@
+
+	######best parameter setting so far
+
+	######best parameter setting so far
+	knn = KNeighborsClassifier()
+	# #parameter grids:
+	knn_n_neighbors = [10,11,12,13,14,15,16,17,18,19,20]
+	# knn_leaf_size = [30]  
+	knn_weights = ['distance']
+	knn_p = [1]
+
+	# knn_paras = {'n_neighbors': knn_n_neighbors, 'weights':knn_weights, 'p':knn_p,'leaf_size':knn_leaf_size}
+	knn_paras = {'n_neighbors': knn_n_neighbors, 'weights':knn_weights, 'p':knn_p}
+	knn_grid_search = GridSearchCV(knn, param_grid = knn_paras, cv = 8, refit=True)
+	knn_grid_search.fit(train, y_train)
+
+	y_predict = knn_grid_search.predict(train)
+	y_valid_predict = knn_grid_search.predict(valid)
+
+	# ###checking results
+	print 'the combinations scores of each parameter setting:'
+	for item in sorted(knn_grid_search.grid_scores_, key=lambda x: x[1]): print item
+	print 'the best parameter setting is:', knn_grid_search.best_estimator_
+	print 'the best CV score of the GridSearchCV is:', knn_grid_search.best_score_
+	#best CV score is:
+	print 'the in-bag prediction accuracy rate is:', (y_train == y_predict).sum()/float(y_train.shape[0])
+	print 'the validation prediction accuracy rate is:', (y_valid == y_valid_predict).sum()/float(y_valid.shape[0])
+
+else:
+	# #####combine train and valid to get the final model and predict again
+	knn_self = KNeighborsClassifier(n_neighbors = 15, weights = 'distance', p = 1) 
+	final_df = pip_knn.fit_transform(df)
+	final_y = pd.concat([y_train, y_valid], axis=0).reset_index().set_index('PassengerId').sort().loc[:,'Survived']
+	#######################################
+	# select_k = SelectKBest(k = 25)
+	# final_df = select_k.fit_transform(final_df, final_y)
+	#######################################
+	knn_self.fit(final_df,final_y)
+	y_predict = knn_self.predict(final_df)
+	print 'the in-bag prediction accuracy rate of knn is:', (final_y == y_predict).sum()/float(final_y.shape[0])
+	test_knn = pip_knn.transform(test)
+	#######################################
+	# test_knn = select_k.transform(test_knn)
+	#######################################
+	y_test = knn_self.predict(test_knn)
+
+
+	# # ###output the data from y_test
+	output_knn = pd.Series(y_test, index = test.index).reset_index()
+	output_knn.columns = ['PassengerId','Survived']
+	output_knn.to_csv('y_test.csv', index=False)
+	ensemble.loc[:,'knn'] = output_knn.Survived.values
+	print '---the true oob accuracy is:', (true_y.Survived==y_test).sum()/float(true_y.Survived.shape[0])
+
+
+ensemble.drop(['rf_select'],axis=1, inplace=True)
+ensemble.loc[:,'final'] = ensemble.apply(lambda x: x.mode(), axis=1).loc[:,0]
+print '---the true oob accuracy is:', (true_y.Survived==ensemble.final).sum()/float(true_y.Survived.shape[0])
+sk=ensemble.loc[:,'final']
+sk=sk.reset_index()
+sk.columns = ['PassengerId','Survived']
+sk.to_csv('y_test.csv', index=False)
+
