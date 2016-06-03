@@ -1,5 +1,9 @@
 '''
-ensemble SVM, RF and boosting method for titanic, and do powerful feature enigneering
+ensemble SVM, RF and boosting method for titanic, and do powerful feature enigneering;
+feature enigneering!feature enigneering!feature enigneering!feature enigneering!
+feature enigneering!feature enigneering!feature enigneering!feature enigneering!
+overfitting!overfitting!overfitting!overfitting!overfitting!overfitting!overfitting!
+overfitting!overfitting!overfitting!overfitting!overfitting!overfitting!overfitting!
 '''
 import os
 import json
@@ -21,6 +25,8 @@ from sklearn.linear_model import Ridge, Lasso, ElasticNet
 import statsmodels.formula.api as smf
 from sklearn.preprocessing import StandardScaler as Scaler
 from sklearn.svm import SVC
+from sklearn.ensemble import AdaBoostClassifier
+from sklearn.feature_selection import SelectKBest
 pylab.ion()
 pd.set_option('display.max_rows', 2000)
 pd.set_option('display.max_columns', 200)
@@ -48,11 +54,11 @@ class NominalSibSp(BaseEstimator, TransformerMixin):
 	def __init__(self):
 		self.mean = np.NaN
 	def fit(self, X, y=None):
-		self.mean = X.loc[:,'SibSp'].mean()
+		self.mean = 3#X.loc[:,'SibSp'].mean()
 		return self
 	def transform(self, X0, y=None):
 		X = X0.copy()
-		X.loc[:, 'SibSp_binary'] = (X.loc[:,'SibSp']>=self.mean).astype(int)
+		X.loc[:, 'SibSp_binary'] = (X.loc[:,'SibSp']<=self.mean).astype(int)
 		return X
 
 ######Parch: as int64, for all algorithm
@@ -63,11 +69,23 @@ class NominalParch(BaseEstimator, TransformerMixin):
 	def __init__(self):
 		self.mean = np.NaN
 	def fit(self, X, y=None):
-		self.mean = X.loc[:,'Parch'].mean()
+		# self.mean = X.loc[:,'Parch'].mean()
+		self.mean = 4
 		return self
 	def transform(self, X0, y=None):
 		X = X0.copy()
-		X.loc[:, 'Parch_binary'] = (X.loc[:,'Parch']>=self.mean).astype(int)
+		X.loc[:, 'Parch_binary'] = (X.loc[:,'Parch']<=self.mean).astype(int)
+		return X
+
+class CreateFam(BaseEstimator, TransformerMixin):
+	def __init__(self):
+		pass
+	def fit(self, X, y = None, **fit_paras):
+		return self
+	def transform(self, X0, y=None, **transform_paras):
+		X = X0.copy()	
+		X.loc[:,'Fam'] = X.loc[:,'Parch'] + X.loc[:,'SibSp']
+		X.loc[:,'Fam_binary'] = X.loc[:,'Fam'].apply(lambda x: 1 if x>=1 and x<=3 else 0)
 		return X
 
 ######Pclass: nominal varibale, should transform to dummy variable if needed for all algorithm
@@ -123,7 +141,7 @@ class TransformSex(BaseEstimator, TransformerMixin):
 
 
 ######name
-class ExtractName(BaseEstimator, TransformerMixin):
+class ExtractNameTitle(BaseEstimator, TransformerMixin):
 	def __init__(self):
 		pass
 	def fit(self, X, y=None, **fit_paras):
@@ -132,9 +150,20 @@ class ExtractName(BaseEstimator, TransformerMixin):
 	def transform(self, X0, y=None, **transform_paras):
 		X = X0.copy()
 		titles_0 = X.Name.apply(lambda row: self.parse(row))
+		# print titles_0.unique()
+		# print titles_0.value_counts()
 		X.loc[:,'Name'] = titles_0.apply(lambda cell: self.transfer_title(cell))
+		X.loc[:,'Name'] = X.loc[:,'Name'].apply(self.title_type)
 		# X.loc[:,'Name'] = titles_0
 		return X
+
+	def title_type(self, cell):
+		if cell == 'Dr' or cell == 'Rev' or cell == 'Officer':
+			return 'Officer'
+		elif cell == 'Sir' or cell == 'Lady':
+			return 'Royalty'
+		else:
+			return cell
 
 	def transfer_title(self, raw):
 		'''
@@ -148,22 +177,22 @@ class ExtractName(BaseEstimator, TransformerMixin):
 		Rev.-> Mr.
 		Dr. -> Mr.
 		'''
-		if raw == 'Dr.': return 'Mr'
+		if raw == 'Dr.': return 'Dr'
 		elif raw == 'Mr.' or raw == 'Master.' or raw == 'Mrs.' or raw == 'Miss.': return re.sub('\.', '', raw)
-		elif raw == 'Rev.': return 'Mr'
+		elif raw == 'Rev.': return 'Rev'
 		elif raw == 'Mlle.': return 'Miss'
-		elif raw == 'Major.': return 'Mr'
-		elif raw == 'Col.': return 'Mr'
-		elif raw == 'Capt.': return 'Mr'
-		elif raw == 'Sir.': return 'Mr'
-		elif raw == 'Jonkheer.': return 'Master'
-		elif raw == 'Jonkvrouw.': return 'Miss'
-		elif raw == 'Don.': return 'Mr'
-		elif raw == 'the Countess.': return 'Mrs'
-		elif raw == 'the Count.': return 'Mr'
+		elif raw == 'Major.': return 'Officer'
+		elif raw == 'Col.': return 'Officer'
+		elif raw == 'Capt.': return 'Officer'
+		elif raw == 'Sir.': return 'Sir'
+		elif raw == 'Jonkheer.': return 'Sir'
+		elif raw == 'Jonkvrouw.': return 'Lady'
+		elif raw == 'Don.': return 'Sir'
+		elif raw == 'the Countess.': return 'Lady'
+		elif raw == 'the Count.': return 'Sir'
 		elif raw == 'Ms.': return 'Mrs'
 		elif raw == 'Mme.' or raw == 'Madame.': return 'Mrs'
-		elif raw == 'Lady.': return 'Mrs'
+		elif raw == 'Lady.': return 'Lady'
 		else: return 'Unknown'
 
 	def parse(self, cell):
@@ -176,18 +205,17 @@ class ExtractName(BaseEstimator, TransformerMixin):
 ######ticket
 class ProcessTicket(BaseEstimator, TransformerMixin):
 	'''
-	this function transfer the ticket number to length(need further categorize to dummy V)
+	this function transfer the ticket number to length (need further categorize to dummy V)
 	'''
-	def __init__(self, ticket_start = False):
-		self.ticket_start = ticket_start
+	def __init__(self):
+		pass
 	def fit(self, X, y=None, **fit_paras):
 		return self
 	def transform(self, X0, y=None, **transform_paras):
 		X = X0.copy()
 		tickets = X.Ticket.apply(lambda row: self.extract_letter(row))
 		X.loc[:,'Ticket_len'] = tickets.apply(lambda x: len(x))
-		if self.ticket_start:
-			X.loc[:,'Ticket_start'] = tickets.apply(lambda x: x[0] if len(x)>0 else '0')
+		X.loc[:,'Ticket_len_ordl'] = X.loc[:,'Ticket_len'].apply(lambda x: 1 if x>=3 and x<=6 else 0)
 		return X
 	def extract_letter(self, row):
 		# m = re.search('^[A-Za-z]+.* ', row)
@@ -198,49 +226,25 @@ class ProcessTicket(BaseEstimator, TransformerMixin):
 
 class ProcessTicket2(BaseEstimator, TransformerMixin):
 	'''
-	this function transfer the ticket number to length(need further categorize to dummy V)
+	this function transfer the ticket number to in a ticket group or not
 	'''
-	def __init__(self, drop):
-		self.drop = drop
+	def __init__(self):
+		self.ticket_group_dict = {}
 	def fit(self, X, y=None, **fit_paras):
+		tickets = X.Ticket.apply(self.clean_ticket)
+		self.ticket_group_dict = dict(tickets.value_counts())
 		return self
 	def transform(self, X0, y=None, **transform_paras):
 		X = X0.copy()
-		if self.drop:
-			X.drop('Ticket', axis=1, inplace = True)
-			return X
-		else:
-			tickets = X.Ticket.apply(lambda row: row.split(' ')).apply(lambda x: x[0] if len(x)>1 else 'unknown').apply(self.match_string)
-			# print tickets
-			X.loc[:,'Ticket'] = tickets
-			return X
-	def match_string(self, row):
-		if row in ['A/5','A/5.', 'A./5.', 'A.5.']: 
-			return 'A5'
-		elif row in ['PC']:
-			return 'PC'
-		elif row in ['SW/PP', 'S.W./PP', 'PP', 'P/PP', 'S.O./P.P.', 'S.O.P.']:
-			return 'PP'
-		elif row in ['C.A.', 'CA', 'CA.',  'C.A./SOTON']:
-			return 'CA'
-		elif row in ['SC/Paris',  'SC/PARIS', 'SC', 'SC/AH', 'S.C./PARIS']:
-			return 'SC'
-		elif row in ['S.C./A.4.','A/4.',  'A4.', 'A/4']:
-			return 'A4'
-		elif row in ['S.P.']:
-			return 'SP'
-		elif row in ['S.O.C.', 'SO/C']:
-			return 'SOC'
-		elif row in ['W./C.', 'W/C']:
-			return 'WC'
-		elif row in ['SOTON/OQ' , 'STON/O', 'SOTON/O.Q.', 'STON/O2.' , 'SOTON/O2']:
-			return 'SOTON'
-		elif row in  ['W.E.P.',  'WE/P']:
-			return 'WEP'
-		elif row in ['C', 'F.C.C.',  'F.C.']:
-			return 'FC'
-		else:
-			return 'unknown'
+		tickets = X.Ticket.apply(self.clean_ticket)
+		X.loc[:,'Ticket_group'] = tickets.apply(lambda x: self.ticket_group_dict[x] if x in self.ticket_group_dict else 1)
+		X.loc[:,'Ticket_grp_ordl'] = X.loc[:,'Ticket_group'].apply(lambda x: 1 if x>=2 and x<=4 else 0)
+		X.drop(['Ticket'], axis=1, inplace=True)
+		return X
+	
+	def clean_ticket(self, tix):
+		return re.sub('[ \./]','',tix.lower())
+
 
 
 
@@ -264,15 +268,6 @@ class ProcessCabin(BaseEstimator, TransformerMixin):
 			else: return 'unknown'
 		else: return 'unknown'
 
-class ProcessCabin2(BaseEstimator, TransformerMixin):
-	def __init__(self):
-		pass
-	def fit(self, X, y=None, **fit_paras):
-		return self
-	def transform(self, X0, y = None):
-		X = X0.copy()
-		X.loc[:, 'Cabin'] = X.Cabin.apply(lambda row: row if type(row) is str else 'unknown')	
-		return X
 	
 #######Embarked
 class ProcessEmbarked(BaseEstimator, TransformerMixin):
@@ -320,7 +315,7 @@ class LinearRegForAge(BaseEstimator, TransformerMixin):
 	'''
 	def __init__(self):
 		# self.linearReg = LinearRegression(fit_intercept=True, normalize=False, copy_X=True)
-		self.linearReg = Ridge(alpha= 0.1, fit_intercept=True, normalize=False, copy_X=True)
+		self.linearReg = Ridge(alpha= 0.1, fit_intercept=False, normalize=True, copy_X=True)
 		# self.linearReg = Lasso(alpha= 0.5, fit_intercept=True, normalize=False, copy_X=True)
 		# self.linearReg = RandomForestRegressor(oob_score=True, n_estimators= 30, max_features='auto')
 
@@ -333,7 +328,7 @@ class LinearRegForAge(BaseEstimator, TransformerMixin):
 		X_train = X_train.drop('Age',axis=1)
 		self.linearReg.fit(X_train, age_train)			
 		# print 'R^2 is', self.linearReg.score(X_train, age_train)	
-		# print 'ib predict error is:', (self.linearReg.predict(X_train) - age_train).apply(abs).mean()
+		# print 'in-bag predict error is:', (self.linearReg.predict(X_train) - age_train).apply(abs).mean()
 		return self
 
 	def transform(self, X, y = None, **transform_paras):
@@ -347,6 +342,7 @@ class LinearRegForAge(BaseEstimator, TransformerMixin):
 		#the original training dataset
 		X_train = X0[~X0.Age.apply(np.isnan)]
 		X_test.loc[:,'Age'] = self.linearReg.predict(X_test)
+		# print X_test.Age
 		return pd.concat([X_train, X_test], axis=0).sort()
 
 class ProcessFare(BaseEstimator, TransformerMixin):
@@ -387,22 +383,19 @@ test.loc[:,'Fare'].fillna(value = train.loc[:,'Fare'].mean(), inplace=True)
 # test_passengerId = test.PassengerId
 ##combine train and valid for combined fitting after gridsearchCV
 df = pd.concat([train, valid], axis=0).copy()
+ensemble = pd.DataFrame(columns=['rf_man','rf_select','svm','logistic','adaboost'], index= test.index)
 
 
 ######################################random forest######################################
 cross_validation_rf = False
 # cross_validation_rf = True
 
-# categorical_vars = ['Pclass','Name','Cabin','Embarked','Ticket_start', 'Ticket']
-categorical_vars = ['Pclass','Name','Cabin','Embarked', 'Ticket']
-
+categorical_vars = ['Pclass','Name','Cabin','Embarked']
 #####pipeline transformation for random forest
-# pip_rf=make_pipeline(ProcessFare(), NominalSibSp(), NominalParch(), TransformSex(), ExtractName(), ProcessTicket(), ProcessTicket2(False),\
-# 	ProcessEmbarked(), ProcessCabin(), CombineDummyVars(categorical_vars), LinearRegForAge())
-
-pip_rf=make_pipeline(ProcessFare(), NominalSibSp(), NominalParch(), TransformSex(), \
-	ExtractName(), ProcessTicket(ticket_start=False), ProcessTicket2(drop=False),\
+pip_rf=make_pipeline(ProcessFare(), NominalSibSp(), NominalParch(), CreateFam(), TransformSex(), \
+	ExtractNameTitle(), ProcessTicket(), ProcessTicket2(),\
 	ProcessEmbarked(), ProcessCabin(), CombineDummyVars(categorical_vars), LinearRegForAge())
+
 
 
 
@@ -413,38 +406,32 @@ if cross_validation_rf:
 	valid = pip_rf.transform(valid)
 
 	######best parameter setting so far
-	# pip_rf=make_pipeline(ProcessFare(), NominalSibSp(), NominalParch(), TransformSex(), ExtractName(), ProcessTicket(), ProcessTicket2(False),\
-	# ProcessEmbarked(), ProcessCabin(), CombineDummyVars(categorical_vars), LinearRegForAge())
-
-# the best parameter setting is: RandomForestClassifier(bootstrap=True, compute_importances=None,
-#             criterion='gini', max_depth=None, max_features=9,
-#             max_leaf_nodes=None, min_density=None, min_samples_leaf=1,
-#             min_samples_split=11, n_estimators=100, n_jobs=1,
-#             oob_score=True, random_state=None, verbose=0)
-# the best CV score of the GridSearchCV is: 0.844537815126
-# the best oob score of the best estimator of grid search results are: 0.830532212885
-# the in-bag prediction accuracy rate is: 0.903361344538
-# the validation prediction accuracy rate is: 0.819209039548
+#  {'max_features': 15, 'min_samples_split': 20, 'n_estimators': 100, 'max_depth': 8}: 0.78469
+# {'max_features': 5, 'min_samples_split': 2, 'n_estimators': 100, 'max_depth': 10}: 0.76077
+# {'max_features': 6, 'min_samples_split': 25, 'n_estimators': 50, 'max_depth': 10}: 0.78947
 	######best parameter setting so far
 
 	# # ###random forest classifier
-	rfc = RandomForestClassifier(oob_score=True, max_depth=None)
+	# rfc = RandomForestClassifier(oob_score=True)
+	rfc = RandomForestClassifier(oob_score=False)
 	# #parameter grids: 
-	n_estimators = [50, 100, 150, 200]
-	max_features = [3, 6, 9, 15,20, 25]
+	n_estimators = [25, 50, 75]
+	max_features = [5, 6, 10]
+	max_depth = [5, 6, 7, 10, 15]
 	# max_features = [20,25,30,40]
-	min_samples_split = [2, 3, 6, 9, 11, 15]
+	min_samples_split = [2, 10, 15, 25]
+	# min_samples_split = [2]
+
+	# n_estimators = [100]
+	# max_features = [6]
+	# max_depth = [5,6,7,8,9,10,11]
+	# # max_features = [20,25,30,40]
+	# min_samples_split = [2]
 
 
-	#parameter grids: 
-	# n_estimators = [125]
-	# max_features = [20,25,30]
-	# # max_features = [10,20,25,40,60]
-	# min_samples_split = [9]
-
-
-	rf_paras = {'n_estimators': n_estimators, 'max_features':max_features,'min_samples_split':min_samples_split}
-	rfc_grid_search = GridSearchCV(rfc, param_grid = rf_paras, cv = 7, refit=True)
+	rf_paras = {'n_estimators': n_estimators, 'max_features':max_features,\
+	'min_samples_split':min_samples_split, 'max_depth': max_depth}
+	rfc_grid_search = GridSearchCV(rfc, param_grid = rf_paras, cv = 8, refit=True)
 	rfc_grid_search.fit(train, y_train)
 
 	y_predict = rfc_grid_search.predict(train)
@@ -452,11 +439,12 @@ if cross_validation_rf:
 	# y_test = rfc_grid_search.predict(test)
 
 	# ###checking results
-	print 'the combinations scores of each parameter setting:', sorted(rfc_grid_search.grid_scores_, key=lambda x: x[1])
+	print 'the combinations scores of each parameter setting:'
+	for item in sorted(rfc_grid_search.grid_scores_, key=lambda x: x[1]): print item
 	print 'the best parameter setting is:', rfc_grid_search.best_estimator_
 	print 'the best CV score of the GridSearchCV is:', rfc_grid_search.best_score_
 	#best CV score is:
-	print 'the best oob score of the best estimator of grid search results are:', rfc_grid_search.best_estimator_.oob_score_
+	# print 'the best oob score of the best estimator of grid search results are:', rfc_grid_search.best_estimator_.oob_score_
 	print 'the in-bag prediction accuracy rate is:', (y_train == y_predict).sum()/float(y_train.shape[0])
 	print 'the validation prediction accuracy rate is:', (y_valid == y_valid_predict).sum()/float(y_valid.shape[0])
 	# print 'the feature importances are:', sorted(list(zip(train.columns, rfc_grid_search.best_estimator_.feature_importances_)), key = lambda x: x[1], reverse=True)
@@ -464,12 +452,50 @@ if cross_validation_rf:
 
 else:
 	# #####combine train and valid to get the final model and predict again
-	rfc_self = RandomForestClassifier(oob_score=True, max_depth=None,max_features=9, min_samples_split=11, n_estimators=100)
+	###the below is manually tested model parameter setting, from experience and test
+	rfc_self = RandomForestClassifier(n_estimators = 50,
+                                max_depth = 5, 
+                                max_features = 5,
+                                min_samples_split = 2,
+                                oob_score=True)
+	# rfc_self = RandomForestClassifier(oob_score=True, max_depth=None,max_features=6, min_samples_split=2, n_estimators=100)
 	# final_df = pd.concat([train, valid], axis = 0)
 	final_df = pip_rf.fit_transform(df)
 	final_y = pd.concat([y_train, y_valid], axis=0).reset_index().set_index('PassengerId').sort().loc[:,'Survived']
+	#######################################
+	select_k = SelectKBest(k = 25)
+	final_df = select_k.fit_transform(final_df, final_y)
+	#######################################
 	rfc_self.fit(final_df,final_y)
-	print rfc_self.oob_score_
+	print 'the final random forest OOB score is:', rfc_self.oob_score_
+	y_predict = rfc_self.predict(final_df)
+	print 'the in-bag prediction accuracy rate of random forest is:', (final_y == y_predict).sum()/float(final_y.shape[0])
+	test_rf = pip_rf.transform(test)
+	#######################################
+	test_rf = select_k.transform(test_rf)
+	#######################################
+	y_test = rfc_self.predict(test_rf)
+
+
+	# # ###output the data from y_test
+	output_rf = pd.Series(y_test, index = test.index).reset_index()
+	output_rf.columns = ['PassengerId','Survived']
+	output_rf.to_csv('y_test.csv', index=False)
+	###save the data to ensemble df
+	ensemble.loc[:,'rf_man'] = output_rf.Survived.values
+
+
+	###the below is selected the best model from the true cross validation result, with different depth parameter value
+	rfc_self = RandomForestClassifier(n_estimators = 50,
+                                max_depth = 10, 
+                                max_features = 6,
+                                min_samples_split = 25,
+                                oob_score=True)
+
+	final_df = pip_rf.fit_transform(df)
+	final_y = pd.concat([y_train, y_valid], axis=0).reset_index().set_index('PassengerId').sort().loc[:,'Survived']
+	rfc_self.fit(final_df,final_y)
+	print 'the final random forest OOB score is:', rfc_self.oob_score_
 	y_predict = rfc_self.predict(final_df)
 	print 'the in-bag prediction accuracy rate of random forest is:', (final_y == y_predict).sum()/float(final_y.shape[0])
 	test_rf = pip_rf.transform(test)
@@ -479,31 +505,29 @@ else:
 	# # ###output the data from y_test
 	output_rf = pd.Series(y_test, index = test.index).reset_index()
 	output_rf.columns = ['PassengerId','Survived']
-	# output_rf.to_csv('y_test.csv', index=False)
-	## roughly checking performance
-	sk = pd.read_csv('y_test_0.csv')
-	print (sk.Survived == y_test).sum()/float(sk.Survived.shape[0])
+	output_rf.to_csv('y_test.csv', index=False)
+	###save the data to ensemble df
+	ensemble.loc[:,'rf_select'] = output_rf.Survived.values
+
+
 
 
 #########################SVM model#########################
 # cross_validation_svm = True
 cross_validation_svm = False
 
-categorical_vars = ['Pclass','Name','Cabin','Embarked',   'Ticket_start', 'Ticket']
-# categorical_vars = ['Pclass','Name','Cabin','Embarked',     'Ticket']
+categorical_vars = ['Pclass','Name','Cabin','Embarked']
 
 #####pipeline transformation for SVM
 # in SVM, you should scale, because the RBF kernel of SVM or the L1 and L2 regularizers of linear models
 # assume that all features are centered around 0 and have variance in the same order
-
-# pip_svm=make_pipeline(ProcessFare(), NominalSibSp(), NominalParch(), TransformSex(), \
-# 	ExtractName(), ProcessTicket(ticket_start=False), ProcessTicket2(drop=False),\
-# 	ProcessEmbarked(), ProcessCabin(), CombineDummyVars(categorical_vars), LinearRegForAge(), Scaler())
-
-pip_svm=make_pipeline(ProcessFare(), NominalSibSp(), NominalParch(), TransformSex(), \
-	ExtractName(), ProcessTicket(ticket_start=True), ProcessTicket2(drop=False),\
+pip_svm=make_pipeline(ProcessFare(), NominalSibSp(), NominalParch(),CreateFam(), TransformSex(), \
+	ExtractNameTitle(), ProcessTicket(), ProcessTicket2(),\
 	ProcessEmbarked(), ProcessCabin(), CombineDummyVars(categorical_vars), LinearRegForAge())
 
+# pip_svm=make_pipeline(ProcessFare(), NominalSibSp(), NominalParch(),CreateFam(), TransformSex(), \
+# 	ExtractNameTitle(), ProcessTicket(), ProcessTicket2(),\
+# 	ProcessEmbarked(), ProcessCabin(), CombineDummyVars(categorical_vars), LinearRegForAge(),Scaler())
 
 if cross_validation_svm:
 	print 'first print, data df shape is (%d, %d)' %(train.shape[0], train.shape[1])
@@ -513,12 +537,9 @@ if cross_validation_svm:
 
 
 	######best parameter setting so far
-# the best parameter setting is: SVC(C=0.1, cache_size=200, class_weight=None, coef0=0.0, degree=3, gamma=0.1,
-#   kernel='linear', max_iter=-1, probability=False, random_state=None,
-#   shrinking=True, tol=0.001, verbose=False)
-# the best CV score of the GridSearchCV is: 0.830532212885
-# the in-bag prediction accuracy rate is: 0.841736694678
-# the validation prediction accuracy rate is: 0.83050847457
+# mean: 0.83613, std: 0.02456, params: {'kernel': 'rbf', 'C': 20, 'gamma': 0.003}: 0.77990
+# mean: 0.82633, std: 0.02869, params: {'kernel': 'linear', 'C': 0.1, 'gamma': 3.0}
+
 	######best parameter setting so far
 
 	# # ###SVM classifier
@@ -528,18 +549,18 @@ if cross_validation_svm:
 	svm = SVC()
 	# #parameter grids:
 	#linear SVM 
-	SVM_C = list(np.arange(0.03, 0.16, 0.01))
-	SVM_gamma = [0.3]
-	# SVM_kernel = ['sigmoid', 'rbf']
-	SVM_kernel = ['linear']
+	# SVM_C = list(np.arange(0.03, 0.16, 0.01))
+	# SVM_gamma = [0.3]
+	SVM_kernel = ['sigmoid', 'rbf','linear']
+	#SVM_kernel = ['linear']
 	#kernel SVM
-	# SVM_C = [0.001, 0.003, 0.1, 0.3, 0.6, 1.0, 3.0, 10, 20]
-	# SVM_gamma = [0.001, 0.003, 0.1, 0.3, 0.6, 1.0, 3.0, 10, 20]
+	SVM_C = [0.001, 0.003, 0.1, 0.3, 0.6, 1.0, 3.0, 10, 20]
+	SVM_gamma = [0.001, 0.003, 0.1, 0.3, 0.6, 1.0, 3.0, 10, 20]
 	# SVM_kernel = ['sigmoid']
 
 
 	SVM_paras = {'C': SVM_C, 'gamma':SVM_gamma,'kernel':SVM_kernel}
-	SVM_grid_search = GridSearchCV(svm, param_grid = SVM_paras, cv = 7, refit=True)
+	SVM_grid_search = GridSearchCV(svm, param_grid = SVM_paras, cv = 8, refit=True)
 	SVM_grid_search.fit(train, y_train)
 	# SVM_grid_search.fit(train.astype(np.float), y_train.astype(np.float))
 
@@ -552,7 +573,6 @@ if cross_validation_svm:
 	print 'the best parameter setting is:', SVM_grid_search.best_estimator_
 	print 'the best CV score of the GridSearchCV is:', SVM_grid_search.best_score_
 	#best CV score is:
-	
 	print 'the in-bag prediction accuracy rate is:', (y_train == y_predict).sum()/float(y_train.shape[0])
 	print 'the validation prediction accuracy rate is:', (y_valid == y_valid_predict).sum()/float(y_valid.shape[0])
 	# print 'the feature importances are:', sorted(list(zip(train.columns, rfc_grid_search.best_estimator_.feature_importances_)), key = lambda x: x[1], reverse=True)
@@ -560,7 +580,7 @@ if cross_validation_svm:
 
 else:
 	# #####combine train and valid to get the final model and predict again
-	svm_self = SVC(C=0.09, kernel ='linear', gamma= 0.3)
+	svm_self = SVC(C=0.1, kernel ='linear', gamma= 1.0)
 	# svm_self = SVC(C=20 , kernel ='sigmoid', gamma= 0.003)
 	# final_df = pd.concat([train, valid], axis = 0)
 	final_df = pip_svm.fit_transform(df)
@@ -576,10 +596,29 @@ else:
 	output_svm = pd.Series(y_test, index = test.index).reset_index()
 	output_svm.columns = ['PassengerId','Survived']
 	output_svm.to_csv('y_test.csv', index=False)
-	## roughly checking performance
-	sk = pd.read_csv('y_test_0.csv')
-	print (sk.Survived == y_test).sum()/float(sk.Survived.shape[0])
-
-
+	ensemble.loc[:,'svm'] = output_svm.Survived.values
 
 ##################Ada-boosting model
+lst = []
+for name in sk.name:
+	print '@@@@@@@@@'
+	print hl[hl.Name == name].index
+	print sk[sk.name==name].survived.values[0]
+	if len(hl[hl.Name == name].index) >0:
+		lst.append((hl[hl.Name == name].index[0], sk[sk.name==name].survived.values[0]))
+
+true_y = pd.DataFrame(columns =['Survived'], index = test.index)
+for pid in test.index:
+	print pid
+	if pid in mm.passid.values:
+		true_y.loc[pid] = mm[mm.passid == pid].survive.values[0]
+
+for pid in true_y.index:
+	if np.isnan(float(true_y.loc[pid])):
+		print pid 
+		print output_svm[output_svm.PassengerId==pid].Survived.values[0]
+		true_y.loc[pid] =output_svm[output_svm.PassengerId==pid].Survived.values[0]
+
+true_y.reset_index(inplace=True)
+true_y.columns = ['PassengerId','Survived']
+true_y.to_csv('y_true.csv', index=False)
