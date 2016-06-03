@@ -773,7 +773,7 @@ else:
 	print '---the true oob accuracy is:', (true_y.Survived==y_test).sum()/float(true_y.Survived.shape[0])
 
 
-ensemble.drop(['rf_select'],axis=1, inplace=True)
+ensemble.drop(['rf_man','knn'],axis=1, inplace=True)
 ensemble.loc[:,'final'] = ensemble.apply(lambda x: x.mode(), axis=1).loc[:,0]
 print '---the true oob accuracy is:', (true_y.Survived==ensemble.final).sum()/float(true_y.Survived.shape[0])
 sk=ensemble.loc[:,'final']
